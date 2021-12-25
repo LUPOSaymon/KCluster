@@ -8,7 +8,7 @@
 #define SCREENWIDTH 2000
 #define SCREENHEIGHT 1800
 #define NUM_CLUSTERS 150         //Number of clusters(Centroids)
-#define NUM_POINTS 250000
+#define NUM_POINTS 25000
 #define RADIUS 1                //Radius of a single point
 #define SQUARE_DIMENSIONS 10    //Dimmension of a single centroid
 #define FRAMES_PER_SECONDS 14   //Numbers of updates done in a single seconds
@@ -135,6 +135,8 @@ void updateClusters(Cluster *clusters)
 
     for (int i = 0; i < NUM_CLUSTERS; ++i)
     {
+        if(clusters[i].numElements == 0)
+            continue;
         clusters[i].x = clusters[i].allX / clusters[i].numElements;
         clusters[i].y = clusters[i].allY / clusters[i].numElements;
         clusters[i].numElements = 0;
@@ -150,8 +152,8 @@ int initClustersAndPoints(Point* points, Cluster* clusters)
     for (int i = 0; i < NUM_CLUSTERS; ++i)
     {
         clusters[i].id = i;
-        clusters[i].x = rand() % SCREENWIDTH;
-        clusters[i].y = rand() % SCREENHEIGHT;
+        clusters[i].x = i;
+        clusters[i].y = i;
         clusters[i].color = al_map_rgb_f(rand() % 256 / (float)256, rand() % 256 / (float)256, rand() % 256 / (float)256);
         clusters[i].numElements = 0;
         clusters[i].allX = 0;
