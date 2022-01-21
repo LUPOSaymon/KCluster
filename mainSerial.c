@@ -5,20 +5,21 @@
 #include <string.h>
 #include <stdio.h>  //Used only if we want to print something
 #include <sys/time.h>
-#include <pthread.h>
 
-#define SCREENWIDTH 3000
-#define SCREENHEIGHT 1800
-#define NUM_CLUSTERS 10000      //Number of clusters(Centroids) 100000
-#define NUM_POINTS 25000
+
+#define SCREEN_WIDTH 2000
+#define SCREEN_HEIGHT 1800
+#define DEFAULT_NUM_CLUSTERS 100              //Number of Clusters
+#define DEFAULT_NUM_POINTS 250000
 #define RADIUS 1               //Radius of a single point
 #define SQUARE_DIMENSIONS 10    //Dimmension of a single centroid
 #define FRAMES_PER_SECONDS 14   //Numbers of updates modified in a single seconds
-#define APPLICATION_TITLE "K Cluster"
-
+#define APPLICATION_TITLE "Serial K Cluster"
+#define TRUE 1
+#define FALSE 0
 typedef struct
 {
-    int r,g,b;
+    short r,g,b;
 }Color;
 
 //###POINT STRUCT###
@@ -28,8 +29,6 @@ typedef struct
         y;
     int clusterId;
     Color color;
-
-
 }Point;
 
 //###CLUSTER STRUCT###
@@ -44,30 +43,27 @@ typedef struct
     int numElements;
 }Cluster;
 
-
-
 int initClustersAndPoints(Point* points, Cluster* clusters);    //Initializes the Cluster Array and the Points Array
-int drawClusters(Cluster* clusters);                            //Displays the clusters (Centroids) (with filled squares)
+int drawClusters(Cluster* clusters);                            //Displays the p_clusters (Centroids) (with filled squares)
 int drawPoints(Point* points);                                  //Displays the Points on screen (with filled circles)
-Color updatePoint(Point* point, Cluster* clusters);     //Assigns to a point the cluster(color & clusterId)
-float distanceBetweenPoints(int x0,int y0, int x1,int y1);      //Calculates distance between two points
-bool updateClusters(Cluster *clusters);                         //Updates all clusters positions
-void updatePoints(Point *points, Cluster *clusters);            //Updates all points colors
+Color updatePoint(Point *point);     //Assigns to a point the cluster(color & clusterId)
+float distanceBetweenPoints(int x0,int y0, int x1,int y1);      //Calculates distance between two p_points
+bool updateClusters(Cluster *clusters);                         //Updates all p_clusters positions
+void updatePoints();            //Updates all p_points colors
 
 void printTime(struct timeval *pTimerStart, struct timeval *pTimerEnd);
 struct timeval t1,t2;
-Cluster *clusters;
-Point *points;
+Cluster *p_clusters;
+Point *p_points;
 int main()
 {
-
-    srand(1234);//srand(time(NULL));
-    clusters = malloc(sizeof(Cluster) * NUM_CLUSTERS);
-    points = malloc(sizeof(Point) * NUM_POINTS);
+    srand48(1234);
+    p_clusters = malloc(sizeof(Cluster) * DEFAULT_NUM_CLUSTERS);
+    p_points = malloc(sizeof(Point) * DEFAULT_NUM_POINTS);
     bool done = false;
     int iterationsCounter = 1;               //Used to print the iterations
 
-    initClustersAndPoints(points, clusters);
+    initClustersAndPoints(p_points, p_clusters);
 
     if (!al_init())
     {
@@ -83,7 +79,7 @@ int main()
     ALLEGRO_TIMER* frameTimer = al_create_timer(1.0 / FRAMES_PER_SECONDS);
     ALLEGRO_EVENT_QUEUE* queue = al_create_event_queue();
 
-    ALLEGRO_DISPLAY  *display = al_create_display(SCREENWIDTH,SCREENHEIGHT);
+    ALLEGRO_DISPLAY  *display = al_create_display(SCREEN_WIDTH, SCREEN_HEIGHT);
 
     if(!display)
     {
@@ -116,16 +112,16 @@ int main()
         {
             //Reset Display
             al_clear_to_color(al_map_rgb(0, 0, 0));
-            //Displaying Points and clusters
-            drawPoints(points);
-            drawClusters(clusters);
+            //Displaying Points and p_clusters
+            drawPoints(p_points);
+            drawClusters(p_clusters);
             al_flip_display();      //Display all the drew objectes
             //Print the iteration number
             printf( "Doing the %d iteration\n", iterationsCounter);
             fflush(stdout);
-            //Updates position of clusters and the points color
+            //Updates position of p_clusters and the p_points color
             gettimeofday(&t1,NULL);
-            done = updateClusters(clusters);
+            done = updateClusters(p_clusters);
             if(!done)
             {
                 printf("Clusters are balanced!\n");
@@ -133,7 +129,7 @@ int main()
                 al_destroy_timer(frameTimer);
             }
             else
-                updatePoints(points, clusters);
+                updatePoints();
             gettimeofday(&t2,NULL);
             printTime(&t1,&t2);
             iterationsCounter++;
@@ -155,18 +151,17 @@ void printTime(struct timeval *pTimeval0, struct timeval *pTimeval1)
     fflush(stdout);
 }
 
-void updatePoints(Point *points, Cluster *clusters)
+void updatePoints()
 {
-    for (int i = 0; i < NUM_POINTS; ++i)
-    {
-        points[i].color = updatePoint(&points[i],clusters);
-    }
+    for (int i = 0; i < DEFAULT_NUM_POINTS; ++i)
+        p_points[i].color = updatePoint(&p_points[i]);
+
 }
 
 bool updateClusters(Cluster *clusters)
 {
     bool modified = false;
-    for (int i = 0; i < NUM_CLUSTERS; ++i)
+    for (int i = 0; i < DEFAULT_NUM_CLUSTERS; ++i)
     {
         if(clusters[i].numElements == 0)
             continue;
@@ -192,15 +187,15 @@ bool updateClusters(Cluster *clusters)
 
 int initClustersAndPoints(Point* points, Cluster* clusters)
 {
-    //Create clusters Points
+    //Create p_clusters Points
     printf("Creating Random Clusters\n");
     fflush(stdout);
     gettimeofday(&t1,NULL);
 
-    for (int i = 0; i < NUM_CLUSTERS; ++i)
+    for (int i = 0; i < DEFAULT_NUM_CLUSTERS; ++i)
     {
         clusters[i].id = (int)i;
-        clusters[i].y = (int)i %SCREENHEIGHT;
+        clusters[i].y = (int)i % SCREEN_HEIGHT;
         clusters[i].x = (int)i;
         clusters[i].color.r = (short)(lrand48() % 256);
         clusters[i].color.g = (short)(lrand48() % 256);
@@ -212,33 +207,37 @@ int initClustersAndPoints(Point* points, Cluster* clusters)
     gettimeofday(&t2,NULL);
     printTime(&t1,&t2);
 
-
-    for (int i = 0; i < NUM_POINTS; ++i)
+    printf("Creating Random Points\n");
+    fflush(stdout);
+    gettimeofday(&t1,NULL);
+    for (int i = 0; i < DEFAULT_NUM_POINTS; ++i)
     {
-        points[i].x = rand() % SCREENWIDTH;
-        points[i].y = rand() % SCREENHEIGHT;
-        points[i].color = updatePoint(&points[i], clusters);
+        points[i].x = (int)(lrand48() % SCREEN_WIDTH);
+        points[i].y = (int)(lrand48() % SCREEN_HEIGHT);
+        points[i].color = updatePoint(&points[i]);
     }
+    gettimeofday(&t2,NULL);
+    printTime(&t1,&t2);
     return 0;
 }
-Color updatePoint(Point* point, Cluster* clusters)
+Color updatePoint(Point *point)
 {
     int idMin = 0;
-    float minDistance = distanceBetweenPoints(point->x, point->y, clusters[0].x, clusters[0].y);
+    float minDistance = distanceBetweenPoints(point->x, point->y, p_clusters[0].x, p_clusters[0].y);
     float tempDistance = 0;
-    for (int i = 1; i < NUM_CLUSTERS; ++i)
+    for (int i = 1; i < DEFAULT_NUM_CLUSTERS; ++i)
     {
-        tempDistance = distanceBetweenPoints(point->x, point->y, clusters[i].x, clusters[i].y);
+        tempDistance = distanceBetweenPoints(point->x, point->y, p_clusters[i].x, p_clusters[i].y);
         if (tempDistance < minDistance)
         {
             minDistance = tempDistance;
             idMin = i;
         }
     }
-    clusters[idMin].allX += point->x;
-    clusters[idMin].allY += point->y;
-    clusters[idMin].numElements++;
-    return clusters[idMin].color;
+    p_clusters[idMin].allX += point->x;
+    p_clusters[idMin].allY += point->y;
+    p_clusters[idMin].numElements++;
+    return p_clusters[idMin].color;
 }
 float distanceBetweenPoints(int x0,int y0, int x1,int y1)
 {
@@ -247,9 +246,9 @@ float distanceBetweenPoints(int x0,int y0, int x1,int y1)
 }
 int drawPoints(Point* points)
 {
-    for (int i = 0; i < NUM_POINTS; ++i)
+    for (int i = 0; i < DEFAULT_NUM_POINTS; ++i)
     {
-        //al_draw_pixel((float)points[i].x,(float)points[i].y, points[i].color);
+        //al_draw_pixel((float)p_points[i].x,(float)p_points[i].y, p_points[i].color);
         al_draw_filled_circle((float)points[i].x,(float)points[i].y,RADIUS, al_map_rgb(points[i].color.r,points[i].color.g,points[i].color.b));
     }
     return 0;
@@ -257,7 +256,7 @@ int drawPoints(Point* points)
 
 int drawClusters(Cluster* clusters)
 {
-    for (int i = 0; i < NUM_CLUSTERS; ++i)
+    for (int i = 0; i < DEFAULT_NUM_CLUSTERS; ++i)
     {
         al_draw_filled_rectangle((float)clusters[i].x - SQUARE_DIMENSIONS, (float)clusters[i].y - SQUARE_DIMENSIONS , (float)clusters[i].x + SQUARE_DIMENSIONS, (float)clusters[i].y + SQUARE_DIMENSIONS,
                                  al_map_rgb(clusters[i].color.r,clusters[i].color.g,clusters[i].color.b));
