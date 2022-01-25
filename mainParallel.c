@@ -7,22 +7,23 @@
 #include <sys/time.h>
 #include <pthread.h>
 #include <argp.h>
+#include <omp.h>
 
 #define APPLICATION_TITLE "Parallel K Cluster "   //Title of the Application
 #define SCREEN_WIDTH 2000
 #define SCREEN_HEIGHT 1800
-#define DEFAULT_NUM_CLUSTERS 15             //Number of Clusters
-#define DEFAULT_NUM_POINTS 100000                //Number of Points
+#define DEFAULT_NUM_CLUSTERS 1000000             //Number of Clusters
+#define DEFAULT_NUM_POINTS 10000                //Number of Points
 #define DEFAULT_NUM_THREADS 1
 #define DEFAULT_INTERATIVE false
+#define DEFAULT_SHOWITERATIONS false
 #define RADIUS 1                        //Radius of a single point
 #define SQUARE_DIMENSIONS 10            //Dimmension of a single centroid
-#define FRAMES_PER_SECONDS 14           //Numbers of updates modified in a single seconds
 
+#define FRAMES_PER_SECONDS 1           //Numbers of updates modified in a single seconds
 #define VERSION_STRING "K-Cluster 0.01"
-#define DOCUMENTATION_STRING "Simple K Cluster using multi-threading"
-
-
+#define DOCUMENTATION_STRING
+#define DEFAULT_OPENMP false
 //###COLOR STRUCT###
 typedef struct
 {
@@ -47,6 +48,7 @@ typedef struct
     int allY;
     int numElements;
     pthread_mutex_t mutex;
+
 }Cluster;
 
 
@@ -54,6 +56,8 @@ struct Arguments                        //Used by main to communicate with parse
 {
     int clusters, points, threads;
     bool interactive;
+    bool showIterations;
+    bool openmp;
 };
 
 void* initClusters(void* thread);                               //Initializes the Clusters Array
@@ -78,6 +82,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
         case 'i':
             arguments->interactive = true;
             break;
+        case 'I':
+            arguments->showIterations = true;
+            break;
         case 'c':
             arguments->clusters = (int) strtol(arg, NULL, 10);
             break;
@@ -87,7 +94,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
         case 't':
             arguments->threads = (int) strtol(arg, NULL, 10);
             break;
-
+        case 'o':
+            arguments->openmp = true;
+            break;
         case ARGP_KEY_ARG:
             if (state->arg_num != ARGP_NO_ARGS)
                 /* Too many Arguments. */
@@ -109,77 +118,130 @@ Point   *pPoints;
 int     numClusters,
         numPoints,
         numThreads;
-struct  timeval t1,t2;
-bool    interactive = DEFAULT_INTERATIVE,
-        modified = false;
+bool    modified = false;
+bool useOpenmp = DEFAULT_OPENMP;
 
 //###ARGP VARIABLES###
-static char doc[] = DOCUMENTATION_STRING;           //Documentation that appears every time with --help
+//Documentation that appears every time with --help
+static char doc[] = "Simple K Cluster using pthread and MPI. Points and Clusters are positioned randomly and, by default, "
+                    "we have numCluster = 1000000 and numPoints = 10000 (use --help to see how to change that)";
 const char *argpProgramVersion = VERSION_STRING;    //Version of the program
 static char argsDoc[] = "";                         //A description of the Arguments we accept.
 
 static struct argp_option options[] =               //The set of arguments that we accept
         {
-                {"interactive",  'i', 0,      0,  "Run program in interactive mode" },
-                {"clusters",    'c', "INTEGER",      0,  "Set the number of pClusters " },
-                {"points",   'p', "INTEGER",      0,"Set the number of pPoints" },
-                {"threads",   't', "INTEGER", 0,"Set number of threads" },
+                {"interactive",     'i',            0,      0,  "Run program in interactive mode" },
+                {"omp",             'o',            0   ,   0,  "Run program using OpenMP insthread of pThread"},
+                {"clusters",        'c',    "INTEGER",      0,  "Set the number of pClusters " },
+                {"points",          'p',    "INTEGER",      0,  "Set the number of pPoints" },
+                {"threads",         't',    "INTEGER",      0,  "Set number of threads" },
+                {"show_iterations", 'I',            0,      0,  "Show iterations time" },
+                {"openmp",          'o',            0,      0,  "Use the openmp library" },
                 {0}
         };
 
 static struct argp argp = {options, parse_opt, argsDoc, doc };  //The Argp parser
 
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "openmp-use-default-none"
 int main(int argc,char** argv)
 {
-    //###Argp Setup###
+    //####MAIN SETUP####
+    int iterationsCounter = 0;               //Used to print the iterations
+    bool showIterations;
+    struct  timeval t1,t2;
+    bool    interactive = DEFAULT_INTERATIVE;
+    struct timeval start,end;
+    gettimeofday(&start,NULL);
+    srand48(1234);      //Set the seed for the random function
+    long totalTimePerIteration = 0;
+
+    //###ARGP SETUP###
     struct Arguments arguments;
     arguments.interactive = DEFAULT_INTERATIVE;
     arguments.clusters = DEFAULT_NUM_CLUSTERS;
     arguments.points = DEFAULT_NUM_POINTS;
     arguments.threads = DEFAULT_NUM_THREADS;
+    arguments.showIterations = DEFAULT_SHOWITERATIONS;
+    arguments.openmp = DEFAULT_OPENMP;
     argp_parse (&argp, argc, argv, 0, 0, &arguments);
     interactive = arguments.interactive;
     numClusters = arguments.clusters;
     numPoints = arguments.points;
     numThreads = arguments.threads;
+    showIterations = arguments.showIterations;
+    useOpenmp = arguments.openmp;
 
-    //###Allegro Setup###
+    //####ALLEGRO SETUP####
     ALLEGRO_TIMER *frameTimer = NULL;
     ALLEGRO_EVENT_QUEUE *queue = NULL;
     ALLEGRO_DISPLAY *display = NULL;
     ALLEGRO_EVENT event;
 
-    //###Main Setup###
-    int iterationsCounter = 1;               //Used to print the iterations
-    srand48(1234);      //Set the seed for the random function
-    pClusters = malloc(sizeof(Cluster) * numClusters);
-    pPoints = malloc(sizeof(Point) * numPoints);
 
-    //###Thread Setup###
+
+    //####THREAD SETUP####
     long thread;
     pthread_t *threadHandles;
     int threadCount = numThreads;
     threadHandles = malloc(threadCount * sizeof (pthread_t));
 
-    printf("Creating Random Clusters\n");
-    fflush(stdout);
-    gettimeofday(&t1,NULL);
-    for (thread = 0;  thread < numThreads ; thread++)
-        pthread_create(&threadHandles[thread], NULL, initClusters, (void *) thread);
-    for (thread = 0;  thread < numThreads ; thread++)
-        pthread_join(threadHandles[thread],NULL);
-    gettimeofday(&t2,NULL);
-    printTime(&t1,&t2);
+    //####STARTING####
+    pClusters = malloc(sizeof(Cluster) * numClusters);
+    pPoints = malloc(sizeof(Point) * numPoints);
+    if(showIterations)
+    {
+        fprintf(stdout, "Creating Random Clusters\n");
+        gettimeofday(&t1, NULL);
+    }
+    if(useOpenmp)
+    {
+        #pragma omp parallel num_threads(threadCount)
+        {
+            int my_rank=omp_get_thread_num();
+            initClusters((void *) my_rank);
+        }
+    }
+    else
+    {
+        for (thread = 0;  thread < numThreads ; thread++)
+            pthread_create(&threadHandles[thread], NULL, initClusters, (void *) thread);
+        for (thread = 0;  thread < numThreads ; thread++)
+            pthread_join(threadHandles[thread],NULL);
+    }
+    if(showIterations)
+    {
+        gettimeofday(&t2,NULL);
+        printTime(&t1,&t2);
+    }
 
-    printf("Creating Random Points\n");
-    fflush(stdout);
-    gettimeofday(&t1,NULL);
-    for(thread = 0; thread < numThreads; thread++)
-        pthread_create(&threadHandles[thread],NULL,initPoints,(void *) thread);
-    for (thread = 0;  thread < numThreads ; thread++)
-        pthread_join(threadHandles[thread],NULL);
-    gettimeofday(&t2,NULL);
-    printTime(&t1,&t2);
+
+    if(showIterations)
+    {
+        fprintf(stdout,"Creating Random Points\n");
+        gettimeofday(&t1,NULL);
+    }
+    if(useOpenmp)
+    {
+        #pragma omp parallel num_threads(threadCount)
+        {
+            int my_rank=omp_get_thread_num();
+            initPoints((void *) my_rank);
+        }
+    }
+    else
+    {
+        for(thread = 0; thread < numThreads; thread++)
+            pthread_create(&threadHandles[thread],NULL,initPoints,(void *) thread);
+        for (thread = 0;  thread < numThreads ; thread++)
+            pthread_join(threadHandles[thread],NULL);
+    }
+    if(showIterations)
+    {
+        gettimeofday(&t2,NULL);
+        printTime(&t1,&t2);
+    }
 
     if(interactive)
     {
@@ -211,6 +273,7 @@ int main(int argc,char** argv)
     bool keep_going = true;
     while(keep_going)
     {
+        iterationsCounter++;
         if(interactive)
         {
             al_wait_for_event(queue, &event);
@@ -222,7 +285,6 @@ int main(int argc,char** argv)
                 drawPoints(pPoints);
                 drawClusters(pClusters);
                 al_flip_display();      //Display all the drew objectes
-                al_flush_event_queue(queue);
             }
             else if ((event.type == ALLEGRO_EVENT_KEY_DOWN) || (event.type == ALLEGRO_EVENT_DISPLAY_CLOSE))
             {
@@ -232,47 +294,95 @@ int main(int argc,char** argv)
             }
         }
 
-        //Print the iteration number
-        printf( "Doing the %d iteration\n", iterationsCounter);
-        fflush(stdout);
-        printf("\tDoing the updateCluster Function\n");
-        fflush(stdout);
-        //Updates position of pClusters and the pPoints color
-        gettimeofday(&t1,NULL);
-        for (thread = 0;  thread < threadCount ; thread++)
-            pthread_create(&threadHandles[thread], NULL, updateClusters, (void *) thread);
-        for (thread = 0;  thread < threadCount ; thread++)
-            pthread_join(threadHandles[thread],NULL);
-        gettimeofday(&t2,NULL);
-
-        printTimeAndText("\t\tDone in "," microseconds\n",&t1,&t2);
-        if(!modified)
+        if(showIterations)
         {
-            printf("Clusters are balanced!\n");
-            fflush(stdout);
-            if (interactive)
-                al_destroy_timer(frameTimer);
-            keep_going = false;
+            //Print the iteration number
+            fprintf( stdout,"Doing the %d iteration\n", iterationsCounter);
+            fprintf(stdout,"\tDoing the updateCluster Function\n");
+            //Updates position of pClusters and the pPoints color
+
+        }
+        gettimeofday(&t1,NULL);
+        if(useOpenmp)
+        {
+            #pragma omp parallel num_threads(threadCount)
+            {
+                int my_rank=omp_get_thread_num();
+                updateClusters((void *) my_rank);
+            }
         }
         else
         {
-            printf("\tDoing the updatePoints Function\n");
-            gettimeofday(&t1,NULL);
             for (thread = 0;  thread < threadCount ; thread++)
-                pthread_create(&threadHandles[thread], NULL, updatePoints, (void *) thread);
+                pthread_create(&threadHandles[thread], NULL, updateClusters, (void *) thread);
             for (thread = 0;  thread < threadCount ; thread++)
                 pthread_join(threadHandles[thread],NULL);
-            gettimeofday(&t2,NULL);
+        }
+        gettimeofday(&t2,NULL);
+        if(showIterations)
+        {
             printTimeAndText("\t\tDone in "," microseconds\n",&t1,&t2);
+        }
+        totalTimePerIteration += (t2.tv_sec - t1.tv_sec) * 1000000 + (t2.tv_usec - t1.tv_usec);
+
+        if(!modified)
+        {
+            fprintf(stdout,"Clusters are balanced!\n");
+            if (interactive)
+                al_destroy_timer(frameTimer);
+            keep_going = false;
+            gettimeofday(&end,NULL);
+            printf("================================================\n");
+            !useOpenmp ? printf("|| USING 'pthread'") : printf("USING 'openmp'");
+            printf(" WITH %d THREADS\n",numThreads);
+            printf("|| WITH %d CLUSTERS AND %d POINTS\n",numClusters,numPoints);
+            printf("|| *********************************************\n");
+            printTimeAndText("|| DONE IN  ", " microseconds\n", &start, &end);
+            printf("|| WITH %d ITERATIONS\n",iterationsCounter);
+            printf("|| AVERAGE TIME PER ITERATION: %ld microseconds\n", totalTimePerIteration/iterationsCounter);
+            printf("================================================\n");
+        }
+        else
+        {
+            if(showIterations)
+            {
+                fprintf(stdout,"\tDoing the updatePoints Function\n");
+
+            }
+            gettimeofday(&t1,NULL);
+            if(useOpenmp)
+            {
+                #pragma omp parallel num_threads(threadCount)
+                {
+                    int my_rank=omp_get_thread_num();
+                    updatePoints((void *) my_rank);
+                }
+            }
+            else
+            {
+                for (thread = 0;  thread < threadCount ; thread++)
+                    pthread_create(&threadHandles[thread], NULL, updatePoints, (void *) thread);
+                for (thread = 0;  thread < threadCount ; thread++)
+                    pthread_join(threadHandles[thread],NULL);
+            }
+            gettimeofday(&t2,NULL);
+            if(showIterations)
+            {
+
+                printTimeAndText("\t\tDone in "," microseconds\n",&t1,&t2);
+            }
+            totalTimePerIteration += (t2.tv_sec - t1.tv_sec) * 1000000 + (t2.tv_usec - t1.tv_usec);
             modified = false;
         }
-        iterationsCounter++;
+
     }
 
     if(interactive)
     {
+        al_wait_for_event(queue,&event);
         al_destroy_display(display);
         al_destroy_event_queue(queue);
+
     }
     return 0;
 }
@@ -280,14 +390,12 @@ int main(int argc,char** argv)
 void printTime(struct timeval *pTimerStart, struct timeval *pTimerEnd)
 {
 
-    printf("\tDone in %ld microseconds\n", (pTimerEnd->tv_sec - pTimerStart->tv_sec) * 1000000 + (pTimerEnd->tv_usec - pTimerStart->tv_usec));
-    fflush(stdout);
+    fprintf(stdout,"\tDone in %ld microseconds\n", (pTimerEnd->tv_sec - pTimerStart->tv_sec) * 1000000 + (pTimerEnd->tv_usec - pTimerStart->tv_usec));
 }
 
 void printTimeAndText(char* text0,char* text1,struct timeval *pTimerStart, struct timeval *pTimerEnd)
 {
-    printf("%s%ld%s", text0,(pTimerEnd->tv_sec - pTimerStart->tv_sec) * 1000000 + (pTimerEnd->tv_usec - pTimerStart->tv_usec),text1);
-    fflush(stdout);
+    fprintf(stdout,"%s%ld%s", text0,(pTimerEnd->tv_sec - pTimerStart->tv_sec) * 1000000 + (pTimerEnd->tv_usec - pTimerStart->tv_usec),text1);
 }
 void * updatePoints(void *thread)
 {
@@ -297,22 +405,21 @@ void * updatePoints(void *thread)
 }
 void* initClusters(void* thread)
 {
-
     //Create pClusters Points
     long threadID = (long)thread;
     for (long i = numClusters / numThreads * threadID; i < (numClusters / numThreads * (threadID + 1)); i++)
     {
         pClusters[i].id = (int)i;
-        pClusters[i].y = (int)i % SCREEN_HEIGHT + 100;
-        pClusters[i].x = (int)i + 100;
+        pClusters[i].y = (int)i % SCREEN_HEIGHT + 300;
+        pClusters[i].x = (int)i + 300;
         pClusters[i].color.r = (short)(lrand48() % 256);
         pClusters[i].color.g = (short)(lrand48() % 256);
         pClusters[i].color.b = (short)(lrand48() % 256);
         pClusters[i].numElements = 0;
         pClusters[i].allX = 0;
         pClusters[i].allY = 0;
+        pthread_mutex_init( &pClusters[i].mutex, NULL);
     }
-    pthread_exit(NULL);
 }
 void* initPoints(void *thread)
 {
@@ -323,8 +430,8 @@ void* initPoints(void *thread)
         pPoints[i].y = (int)(lrand48() % SCREEN_HEIGHT);
         updatePoint(&pPoints[i]);
     }
-    pthread_exit(NULL);
 }
+
 void* updateClusters(void* thread)
 {
     long threadID = (long) thread;
@@ -332,7 +439,6 @@ void* updateClusters(void* thread)
     {
         if(pClusters[i].numElements == 0)
             continue;
-
         int tempAverageX = pClusters[i].allX / pClusters[i].numElements;
         int tempAverageY = pClusters[i].allY / pClusters[i].numElements;
         if (tempAverageX != pClusters[i].x)
@@ -345,12 +451,10 @@ void* updateClusters(void* thread)
             pClusters[i].y = tempAverageY;
             modified = true;
         }
-
         pClusters[i].numElements = 0;
         pClusters[i].allX = 0;
         pClusters[i].allY = 0;
     }
-    pthread_exit(NULL);
 }
 void* updatePoint(Point* point)
 {
@@ -391,10 +495,8 @@ void drawClusters(Cluster* clusters)
 void drawPoints(Point* points)
 {
     for (int i = 0; i < numPoints; ++i)
-    {
-        //al_draw_pixel((float)pPoints[i].x,(float)pPoints[i].y, pPoints[i].color);
         al_draw_filled_circle((float)points[i].x,(float)points[i].y,RADIUS, al_map_rgb(points[i].color.r,points[i].color.g,points[i].color.b));
-    }
+
 }
 
 

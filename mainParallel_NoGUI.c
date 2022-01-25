@@ -7,7 +7,7 @@
 #include <argp.h>
 #include <stdbool.h>
 #include <stdlib.h>
-
+#include <omp.h>
 
 #define DEFAULT_NUM_CLUSTERS 15             //Number of Clusters
 #define DEFAULT_NUM_POINTS 100000                //Number of Points
@@ -52,6 +52,7 @@ typedef struct
 struct Arguments                        //Used by main to communicate with parse_opt
 {
     int clusters, points, threads;
+    bool openmp;
 };
 
 void* initClusters(void* thread);                               //Initializes the Clusters Array
@@ -112,9 +113,10 @@ static char argsDoc[] = "";                         //A description of the Argum
 
 static struct argp_option options[] =               //The set of arguments that we accept
         {
-                {"clusters",    'c', "INTEGER",      0,  "Set the number of pClusters " },
-                {"points",   'p', "INTEGER",      0,"Set the number of pPoints" },
-                {"threads",   't', "INTEGER", 0,"Set number of threads" },
+                {"clusters",    'c', "INTEGER",     0,  "Set the number of pClusters " },
+                {"points",      'p', "INTEGER",     0,  "Set the number of pPoints" },
+                {"threads",     't', "INTEGER",     0,  "Set number of threads" },
+                {"openmp",          'o',        0,      0,  "Set openMP inshead of pthread" },
                 {0}
         };
 
@@ -127,11 +129,11 @@ int main(int argc,char** argv)
     arguments.clusters = DEFAULT_NUM_CLUSTERS;
     arguments.points = DEFAULT_NUM_POINTS;
     arguments.threads = DEFAULT_NUM_THREADS;
+
     argp_parse (&argp, argc, argv, 0, 0, &arguments);
     numClusters = arguments.clusters;
     numPoints = arguments.points;
     numThreads = arguments.threads;
-
 
     //###Main Setup###
     int iterationsCounter = 1;               //Used to print the iterations
