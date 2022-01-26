@@ -13,8 +13,8 @@
 #define APPLICATION_TITLE "Parallel K Cluster "   //Title of the Application
 #define SCREEN_WIDTH 2000
 #define SCREEN_HEIGHT 1800
-#define DEFAULT_NUM_CLUSTERS 1000000             //Number of Clusters
-#define DEFAULT_NUM_POINTS 10000                //Number of Points
+#define DEFAULT_NUM_CLUSTERS 2000                   //Number of Clusters
+#define DEFAULT_NUM_POINTS 200000                   //Number of Points
 #define DEFAULT_NUM_THREADS 1
 #define DEFAULT_INTERATIVE false
 #define DEFAULT_SHOWITERATIONS false
@@ -44,7 +44,7 @@ typedef struct
     int id;
     Color color;
     int x,
-        y;\
+        y;
     int allX;
     int allY;
     int numElements;
@@ -124,8 +124,8 @@ bool useOpenmp = DEFAULT_OPENMP;
 
 //###ARGP VARIABLES###
 //Documentation that appears every time with --help
-static char doc[] = "Simple K Cluster using pthread and MPI. Points and Clusters are positioned randomly and, by default, "
-                    "we have numCluster = 1000000 and numPoints = 10000 (use --help to see how to change that)";
+static char doc[] = "Simple K Cluster using pthread and openMP. Points and Clusters are positioned randomly and, by default, "
+                    "we have numCluster = 2000 and numPoints = 200000";
 const char *argpProgramVersion = VERSION_STRING;    //Version of the program
 static char argsDoc[] = "";                         //A description of the Arguments we accept.
 
