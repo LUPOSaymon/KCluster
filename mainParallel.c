@@ -9,6 +9,7 @@
 #include <argp.h>
 #include <omp.h>
 
+
 #define APPLICATION_TITLE "Parallel K Cluster "   //Title of the Application
 #define SCREEN_WIDTH 2000
 #define SCREEN_HEIGHT 1800
@@ -18,9 +19,9 @@
 #define DEFAULT_INTERATIVE false
 #define DEFAULT_SHOWITERATIONS false
 #define RADIUS 1                        //Radius of a single point
-#define SQUARE_DIMENSIONS 10            //Dimmension of a single centroid
+#define SQUARE_DIMENSIONS 10            //Dimension of a single centroid
 
-#define FRAMES_PER_SECONDS 1           //Numbers of updates modified in a single seconds
+#define FRAMES_PER_SECONDS 14           //Numbers of updates modified in a single seconds
 #define VERSION_STRING "K-Cluster 0.01"
 #define DOCUMENTATION_STRING
 #define DEFAULT_OPENMP false
@@ -43,7 +44,7 @@ typedef struct
     int id;
     Color color;
     int x,
-        y;
+        y;\
     int allX;
     int allY;
     int numElements;
@@ -410,8 +411,8 @@ void* initClusters(void* thread)
     for (long i = numClusters / numThreads * threadID; i < (numClusters / numThreads * (threadID + 1)); i++)
     {
         pClusters[i].id = (int)i;
-        pClusters[i].y = (int)i % SCREEN_HEIGHT + 300;
-        pClusters[i].x = (int)i + 300;
+        pClusters[i].y = (int)(lrand48() % SCREEN_HEIGHT);
+        pClusters[i].x = (int)(lrand48() % SCREEN_WIDTH) ;
         pClusters[i].color.r = (short)(lrand48() % 256);
         pClusters[i].color.g = (short)(lrand48() % 256);
         pClusters[i].color.b = (short)(lrand48() % 256);
